@@ -18,19 +18,17 @@ def home():
 @app.get("/get-audio")
 def get_audio(url: str = Query(..., description="YouTube video URL")):
     clean_url = url.strip()
-    
-    # ئەگەر تەنها ID هاتبوو، دەیکاتە ناونیشانی تەواو
     if not clean_url.startswith("http"):
         clean_url = f"https://www.youtube.com/watch?v={clean_url}"
 
     ydl_opts = {
-        'format': 'ba/b',
+        'format': 'bestaudio/best',
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
         'extract_flat': False,
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
         },
     }
@@ -39,13 +37,23 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(clean_url, download=False)
             
-            # گەڕان بەدوای لینکی ڕاستەوخۆ
+            # 1. سەیرکردنی لینکی ڕاستەوخۆی سەرەکی
             audio_url = info.get('url')
+
+            # 2. ئەگەر نەبوو، گەڕان لە ناو تەواوی لیستەکانی فۆرمات
             if not audio_url and 'formats' in info:
-                # گەڕان بەناو فۆرماتەکان بۆ دەرهێنانی باشترین دەنگ
-                audio_formats = [f for f in info['formats'] if f.get('acodec') != 'none']
-                if audio_formats:
-                    audio_url = audio_formats[-1].get('url')
+                # گەڕان بەدوای تەنها فایلی دەنگ (acodec هەبێت و vcodec نەبێت)
+                for f in reversed(info['formats']):
+                    if f.get('acodec') != 'none' and f.get('url'):
+                        audio_url = f.get('url')
+                        break
+                
+                # ئەگەر هەر دەنگ بە تەنها نەدۆزرایەوە، هەڵبژاردنی نزمترین فۆرماتی ڤیدیۆکە بۆ وەرگرتنی دەنگ
+                if not audio_url:
+                    for f in info['formats']:
+                        if f.get('url'):
+                            audio_url = f.get('url')
+                            break
 
             if not audio_url:
                 raise HTTPException(status_code=500, detail="Could not find streamable audio URL.")
