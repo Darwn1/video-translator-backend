@@ -28,13 +28,9 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
         'noplaylist': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android_testsuite', 'web_embedded'],
-                'player_skip': ['webpage', 'configs']
+                'player_client': ['android', 'web']
             }
         },
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-        }
     }
 
     try:
