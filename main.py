@@ -21,7 +21,6 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
     if not clean_url.startswith("http"):
         clean_url = f"https://www.youtube.com/watch?v={clean_url}"
 
-    # بەکارهێنانی کڵاینتی ئەندرۆید بۆ دەربازبوون لە هەموو جۆرە بلۆک و ئێرۆرێکی 500
     ydl_opts = {
         'format': 'bestaudio/best',
         'quiet': True,
@@ -29,12 +28,8 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
         'noplaylist': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios', 'web']
+                'player_client': ['android_creator', 'ios']
             }
-        },
-        'http_headers': {
-            'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
-            'Accept-Language': 'en-US,en;q=0.9',
         },
     }
 
@@ -42,18 +37,14 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(clean_url, download=False)
             
-            # 1. سەیرکردنی لینکی ڕاستەوخۆ
             audio_url = info.get('url')
 
-            # 2. گەڕان لەناو لیستەکانی فۆرمات
             if not audio_url and 'formats' in info:
-                # گەڕان بەدوای فایلی دەنگ بەتەنها
                 for f in reversed(info['formats']):
                     if f.get('acodec') != 'none' and f.get('url'):
                         audio_url = f.get('url')
                         break
                 
-                # گەڕان بەدوای هەر لینکێکی بەردەست
                 if not audio_url:
                     for f in info['formats']:
                         if f.get('url'):
