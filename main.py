@@ -21,14 +21,16 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
     if not clean_url.startswith("http"):
         clean_url = f"https://www.youtube.com/watch?v={clean_url}"
 
+    # tv_embedded و mweb ڕێگری لە داواکردنی لۆگین دەکەن
     ydl_opts = {
-        'format': 'bestaudio/best',
+        'format': 'ba/b',
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android_creator', 'ios']
+                'player_client': ['tv_embedded', 'mweb'],
+                'skip': ['webpage', 'configs']
             }
         },
     }
