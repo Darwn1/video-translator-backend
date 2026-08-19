@@ -18,30 +18,30 @@ def extract_video_id(url: str) -> str:
     match = re.search(r'(?:v=|\/|youtu\.be\/)([0-9A-Za-z_-]{11})', url)
     return match.group(1) if match else url.strip()
 
-def fetch_from_invidious(video_id: str):
+# بەکارهێنانی Piped کە زۆر خێرا و جێگیرە بۆ دەرهێنانی دەنگ
+def fetch_from_piped(video_id: str):
     instances = [
-        "https://inv.nadeko.net",
-        "https://invidious.nerdvpn.de",
-        "https://invidious.protokolla.fi",
-        "https://yt.artemislena.eu"
+        "https://pipedapi.kavin.rocks",
+        "https://pipedapi.tokhmi.xyz",
+        "https://pipedapi.smnz.de",
+        "https://piped-api.garudalinux.org"
     ]
     for instance in instances:
         try:
             req = urllib.request.Request(
-                f"{instance}/api/v1/videos/{video_id}",
-                headers={"User-Agent": "Mozilla/5.0"}
+                f"{instance}/streams/{video_id}",
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             )
             with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status == 200:
                     data = json.loads(response.read().decode())
-                    audio_streams = data.get("adaptiveFormats", [])
-                    for stream in audio_streams:
-                        if stream.get("type", "").startswith("audio/"):
-                            return {
-                                "status": "success",
-                                "title": data.get("title"),
-                                "audio_url": stream.get("url")
-                            }
+                    audio_streams = data.get("audioStreams", [])
+                    if audio_streams:
+                        return {
+                            "status": "success",
+                            "title": "YouTube Audio",
+                            "audio_url": audio_streams[0].get("url")
+                        }
         except Exception:
             continue
     return None
@@ -58,12 +58,22 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
     if not clean_url.startswith("http"):
         clean_url = f"https://www.youtube.com/watch?v={video_id}"
 
-    # 1. تاقیکردنەوە لە ڕێگەی yt-dlp
+    # 1. هەوڵی یەکەم لە ڕێگەی Piped API دەدەین چونکە بلۆک ناکرێت و زۆر خێرایە
+    piped_result = fetch_from_piped(video_id)
+    if piped_result:
+        return piped_result
+
+    # 2. ئەگەر Piped کاری نەکرد، ئینجا پەنا دەبەینە بەر yt-dlp وەک یەدەگ
     ydl_opts = {
         'format': 'ba/b',
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios']
+            }
+        }
     }
 
     try:
@@ -84,10 +94,5 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
                 }
     except Exception:
         pass
-
-    # 2. Fallback لە کاتی بوونی بلۆکی IP
-    backup_result = fetch_from_invidious(video_id)
-    if backup_result:
-        return backup_result
 
     raise HTTPException(status_code=500, detail="Could not extract audio via direct or backup stream.")
