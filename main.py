@@ -1,7 +1,8 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import yt_dlp
-import requests
+import json
+import urllib.request
 import re
 
 app = FastAPI()
@@ -18,7 +19,6 @@ def extract_video_id(url: str) -> str:
     return match.group(1) if match else url.strip()
 
 def fetch_from_invidious(video_id: str):
-    # لیستێک لە بەهێزترین سێرڤەرە کراوەکان کە بلۆک ناکرێن
     instances = [
         "https://inv.nadeko.net",
         "https://invidious.nerdvpn.de",
@@ -27,17 +27,21 @@ def fetch_from_invidious(video_id: str):
     ]
     for instance in instances:
         try:
-            res = requests.get(f"{instance}/api/v1/videos/{video_id}", timeout=6)
-            if res.status_code == 200:
-                data = res.json()
-                audio_streams = data.get("adaptiveFormats", [])
-                for stream in audio_streams:
-                    if stream.get("type", "").startswith("audio/"):
-                        return {
-                            "status": "success",
-                            "title": data.get("title"),
-                            "audio_url": stream.get("url")
-                        }
+            req = urllib.request.Request(
+                f"{instance}/api/v1/videos/{video_id}",
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode())
+                    audio_streams = data.get("adaptiveFormats", [])
+                    for stream in audio_streams:
+                        if stream.get("type", "").startswith("audio/"):
+                            return {
+                                "status": "success",
+                                "title": data.get("title"),
+                                "audio_url": stream.get("url")
+                            }
         except Exception:
             continue
     return None
@@ -54,7 +58,7 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
     if not clean_url.startswith("http"):
         clean_url = f"https://www.youtube.com/watch?v={video_id}"
 
-    # 1. تاقیکردنەوەی سەرەتایی بە yt-dlp
+    # 1. تاقیکردنەوە لە ڕێگەی yt-dlp
     ydl_opts = {
         'format': 'ba/b',
         'quiet': True,
@@ -79,9 +83,9 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
                     "audio_url": audio_url
                 }
     except Exception:
-        pass  # ئەگەر یوتیوب بەهۆی بلۆکی داتاسەنتەر ڕێگری کرد، ڕاستەوخۆ دەچێتە سەر Fallback
+        pass
 
-    # 2. دەرهێنانی مسۆگەر لە ڕێگەی پرۆتۆکۆڵی دەربازبوون لە بلۆک
+    # 2. Fallback لە کاتی بوونی بلۆکی IP
     backup_result = fetch_from_invidious(video_id)
     if backup_result:
         return backup_result
