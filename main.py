@@ -21,18 +21,23 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
     if not clean_url.startswith("http"):
         clean_url = f"https://www.youtube.com/watch?v={clean_url}"
 
-    # tv_embedded و mweb ڕێگری لە داواکردنی لۆگین دەکەن
+    # بایپاسکردنی توندی بلۆکی بۆت لە ڕێگەی کڵاینتە دەستکاریکراوەکان
     ydl_opts = {
-        'format': 'ba/b',
+        'format': 'bestaudio/best',
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['tv_embedded', 'mweb'],
-                'skip': ['webpage', 'configs']
+                'player_client': ['ios', 'tv_embedded'],
+                'player_skip': ['configs', 'webpage']
             }
         },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
     }
 
     try:
