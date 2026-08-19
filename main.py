@@ -21,14 +21,19 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
     if not clean_url.startswith("http"):
         clean_url = f"https://www.youtube.com/watch?v={clean_url}"
 
+    # بەکارهێنانی کڵاینتی ئەندرۆید بۆ دەربازبوون لە هەموو جۆرە بلۆک و ئێرۆرێکی 500
     ydl_opts = {
         'format': 'bestaudio/best',
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
-        'extract_flat': False,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios', 'web']
+            }
+        },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
             'Accept-Language': 'en-US,en;q=0.9',
         },
     }
@@ -37,18 +42,18 @@ def get_audio(url: str = Query(..., description="YouTube video URL")):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(clean_url, download=False)
             
-            # 1. سەیرکردنی لینکی ڕاستەوخۆی سەرەکی
+            # 1. سەیرکردنی لینکی ڕاستەوخۆ
             audio_url = info.get('url')
 
-            # 2. ئەگەر نەبوو، گەڕان لە ناو تەواوی لیستەکانی فۆرمات
+            # 2. گەڕان لەناو لیستەکانی فۆرمات
             if not audio_url and 'formats' in info:
-                # گەڕان بەدوای تەنها فایلی دەنگ (acodec هەبێت و vcodec نەبێت)
+                # گەڕان بەدوای فایلی دەنگ بەتەنها
                 for f in reversed(info['formats']):
                     if f.get('acodec') != 'none' and f.get('url'):
                         audio_url = f.get('url')
                         break
                 
-                # ئەگەر هەر دەنگ بە تەنها نەدۆزرایەوە، هەڵبژاردنی نزمترین فۆرماتی ڤیدیۆکە بۆ وەرگرتنی دەنگ
+                # گەڕان بەدوای هەر لینکێکی بەردەست
                 if not audio_url:
                     for f in info['formats']:
                         if f.get('url'):
