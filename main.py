@@ -25,54 +25,32 @@ def home():
 def get_audio(url: str = Query(..., description="YouTube video URL")):
     video_id = get_video_id(url)
     
-    # پرۆتۆکۆڵی تایبەتی ANDROID_EMBED کە هەرگیز بلۆک نابێت
-    payload = {
-        "videoId": video_id,
-        "context": {
-            "client": {
-                "clientName": "ANDROID_EMBEDDED_PLAYER",
-                "clientVersion": "19.09.37",
-                "hl": "en"
-            }
-        }
-    }
+    # لیستی بەهێزترین سێرڤەرە جیهانییەکان کە بلۆک ناکرێن و فایلی دەنگ ڕێک دەدەن
+    instances = [
+        "https://pipedapi.kavin.rocks",
+        "https://api.piped.privacydev.net",
+        "https://pipedapi.leptons.xyz",
+        "https://piped-api.lunar.icu"
+    ]
     
-    req_data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(
-        "https://www.youtube.com/youtubei/v1/player",
-        data=req_data,
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "com.google.android.youtube/19.09.37"
-        }
-    )
-    
-    try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            res_data = json.loads(response.read().decode('utf-8'))
-            streaming_data = res_data.get("streamingData", {})
-            formats = streaming_data.get("adaptiveFormats", []) + streaming_data.get("formats", [])
-            
-            for f in formats:
-                if f.get("url"):
-                    # گەڕان بەدوای تەنها فایلی دەنگ
-                    if "audio" in f.get("mimeType", ""):
+    for instance in instances:
+        try:
+            req = urllib.request.Request(
+                f"{instance}/streams/{video_id}",
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(req, timeout=6) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode('utf-8'))
+                    audio_streams = data.get("audioStreams", [])
+                    if audio_streams:
+                        # وەرگرتنی یەکەمین لینکی ڕوون و ئامادەکراوی دەنگ
                         return {
                             "status": "success",
-                            "title": res_data.get("videoDetails", {}).get("title", "YouTube Audio"),
-                            "audio_url": f.get("url")
+                            "title": data.get("title", "YouTube Audio"),
+                            "audio_url": audio_streams[0].get("url")
                         }
-            
-            # ئەگەر تەنها دەنگ نەبوو، یەکەم لینکی کارا وەردەگرێت
-            for f in formats:
-                if f.get("url"):
-                    return {
-                        "status": "success",
-                        "title": res_data.get("videoDetails", {}).get("title", "YouTube Audio"),
-                        "audio_url": f.get("url")
-                    }
-                    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Extraction error: {str(e)}")
+        except Exception:
+            continue
 
-    raise HTTPException(status_code=404, detail="Audio stream not found.")
+    raise HTTPException(status_code=500, detail="Unable to extract audio stream from providers.")
