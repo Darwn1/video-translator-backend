@@ -25,54 +25,54 @@ def home():
 def get_audio(url: str = Query(..., description="YouTube video URL")):
     video_id = get_video_id(url)
     
-    # بەکارهێنانی کڵاینتی فەرمی پەخشی ئەندرۆید بەبێ بلۆک
+    # پرۆتۆکۆڵی تایبەتی ANDROID_EMBED کە هەرگیز بلۆک نابێت
     payload = {
         "videoId": video_id,
         "context": {
             "client": {
-                "clientName": "ANDROID",
+                "clientName": "ANDROID_EMBEDDED_PLAYER",
                 "clientVersion": "19.09.37",
-                "androidSdkVersion": 30,
-                "hl": "en",
-                "gl": "US"
+                "hl": "en"
             }
         }
     }
     
     req_data = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(
-        "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
+        "https://www.youtube.com/youtubei/v1/player",
         data=req_data,
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip"
+            "User-Agent": "com.google.android.youtube/19.09.37"
         }
     )
     
     try:
-        with urllib.request.urlopen(req, timeout=8) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             res_data = json.loads(response.read().decode('utf-8'))
             streaming_data = res_data.get("streamingData", {})
-            formats = streaming_data.get("adaptiveFormats", [])
+            formats = streaming_data.get("adaptiveFormats", []) + streaming_data.get("formats", [])
             
-            # دەرهێنانی تەنها لینکی دەنگ
             for f in formats:
-                if "audio" in f.get("mimeType", "") and f.get("url"):
-                    return {
-                        "status": "success",
-                        "title": res_data.get("videoDetails", {}).get("title", "YouTube Audio"),
-                        "audio_url": f.get("url")
-                    }
-                    
-            # ئەگەر لە adaptive نەبوو لە فۆرماتی گشتی بگەڕێ
-            for f in streaming_data.get("formats", []):
+                if f.get("url"):
+                    # گەڕان بەدوای تەنها فایلی دەنگ
+                    if "audio" in f.get("mimeType", ""):
+                        return {
+                            "status": "success",
+                            "title": res_data.get("videoDetails", {}).get("title", "YouTube Audio"),
+                            "audio_url": f.get("url")
+                        }
+            
+            # ئەگەر تەنها دەنگ نەبوو، یەکەم لینکی کارا وەردەگرێت
+            for f in formats:
                 if f.get("url"):
                     return {
                         "status": "success",
                         "title": res_data.get("videoDetails", {}).get("title", "YouTube Audio"),
                         "audio_url": f.get("url")
                     }
+                    
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Extraction error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Extraction error: {str(e)}")
 
-    raise HTTPException(status_code=500, detail="Audio stream not found.")
+    raise HTTPException(status_code=404, detail="Audio stream not found.")
