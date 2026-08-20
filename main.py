@@ -1,8 +1,7 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-import yt_dlp
-import json
 import urllib.request
+import json
 import re
 
 app = FastAPI()
@@ -14,37 +13,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def extract_video_id(url: str) -> str:
+def get_video_id(url: str) -> str:
     match = re.search(r'(?:v=|\/|youtu\.be\/)([0-9A-Za-z_-]{11})', url)
     return match.group(1) if match else url.strip()
-
-# بەکارهێنانی Piped کە زۆر خێرا و جێگیرە بۆ دەرهێنانی دەنگ
-def fetch_from_piped(video_id: str):
-    instances = [
-        "https://pipedapi.kavin.rocks",
-        "https://pipedapi.tokhmi.xyz",
-        "https://pipedapi.smnz.de",
-        "https://piped-api.garudalinux.org"
-    ]
-    for instance in instances:
-        try:
-            req = urllib.request.Request(
-                f"{instance}/streams/{video_id}",
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-            )
-            with urllib.request.urlopen(req, timeout=5) as response:
-                if response.status == 200:
-                    data = json.loads(response.read().decode())
-                    audio_streams = data.get("audioStreams", [])
-                    if audio_streams:
-                        return {
-                            "status": "success",
-                            "title": "YouTube Audio",
-                            "audio_url": audio_streams[0].get("url")
-                        }
-        except Exception:
-            continue
-    return None
 
 @app.get("/")
 def home():
@@ -52,47 +23,56 @@ def home():
 
 @app.get("/get-audio")
 def get_audio(url: str = Query(..., description="YouTube video URL")):
-    clean_url = url.strip()
-    video_id = extract_video_id(clean_url)
+    video_id = get_video_id(url)
     
-    if not clean_url.startswith("http"):
-        clean_url = f"https://www.youtube.com/watch?v={video_id}"
-
-    # 1. هەوڵی یەکەم لە ڕێگەی Piped API دەدەین چونکە بلۆک ناکرێت و زۆر خێرایە
-    piped_result = fetch_from_piped(video_id)
-    if piped_result:
-        return piped_result
-
-    # 2. ئەگەر Piped کاری نەکرد، ئینجا پەنا دەبەینە بەر yt-dlp وەک یەدەگ
-    ydl_opts = {
-        'format': 'ba/b',
-        'quiet': True,
-        'no_warnings': True,
-        'noplaylist': True,
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'ios']
+    # بەکارهێنانی کڵاینتی فەرمی پەخشی ئەندرۆید بەبێ بلۆک
+    payload = {
+        "videoId": video_id,
+        "context": {
+            "client": {
+                "clientName": "ANDROID",
+                "clientVersion": "19.09.37",
+                "androidSdkVersion": 30,
+                "hl": "en",
+                "gl": "US"
             }
         }
     }
-
+    
+    req_data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(
+        "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
+        data=req_data,
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip"
+        }
+    )
+    
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(clean_url, download=False)
-            audio_url = info.get('url')
-            if not audio_url and 'formats' in info:
-                for f in reversed(info['formats']):
-                    if f.get('acodec') != 'none' and f.get('url'):
-                        audio_url = f.get('url')
-                        break
+        with urllib.request.urlopen(req, timeout=8) as response:
+            res_data = json.loads(response.read().decode('utf-8'))
+            streaming_data = res_data.get("streamingData", {})
+            formats = streaming_data.get("adaptiveFormats", [])
             
-            if audio_url:
-                return {
-                    "status": "success",
-                    "title": info.get('title'),
-                    "audio_url": audio_url
-                }
-    except Exception:
-        pass
+            # دەرهێنانی تەنها لینکی دەنگ
+            for f in formats:
+                if "audio" in f.get("mimeType", "") and f.get("url"):
+                    return {
+                        "status": "success",
+                        "title": res_data.get("videoDetails", {}).get("title", "YouTube Audio"),
+                        "audio_url": f.get("url")
+                    }
+                    
+            # ئەگەر لە adaptive نەبوو لە فۆرماتی گشتی بگەڕێ
+            for f in streaming_data.get("formats", []):
+                if f.get("url"):
+                    return {
+                        "status": "success",
+                        "title": res_data.get("videoDetails", {}).get("title", "YouTube Audio"),
+                        "audio_url": f.get("url")
+                    }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Extraction error: {str(e)}")
 
-    raise HTTPException(status_code=500, detail="Could not extract audio via direct or backup stream.")
+    raise HTTPException(status_code=500, detail="Audio stream not found.")
